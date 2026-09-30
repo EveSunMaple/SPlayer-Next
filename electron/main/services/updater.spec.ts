@@ -80,8 +80,13 @@ const deferred = <T>() => {
   return { promise, resolve, reject };
 };
 
-describe("统一更新任务", () => {
+const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+
+describe.each(["win32", "linux"])("统一更新任务（%s）", (platform) => {
   beforeEach(() => {
+    // 显式模拟安装平台，避免普通 Node 环境误入 Electron 安装包检测
+    Object.defineProperty(process, "platform", { ...platformDescriptor, value: platform });
+    vi.stubEnv("APPIMAGE", platform === "linux" ? "/opt/SPlayer.AppImage" : undefined);
     vi.resetModules();
     vi.clearAllMocks();
     Object.assign(mocks, {
@@ -98,7 +103,12 @@ describe("统一更新任务", () => {
     mocks.install.mockReset();
   });
   afterEach(async () => {
-    (await import("./updater")).disposeUpdater();
+    try {
+      (await import("./updater")).disposeUpdater();
+    } finally {
+      Object.defineProperty(process, "platform", platformDescriptor);
+      vi.unstubAllEnvs();
+    }
   });
 
   it("nightly 安装版尊重显式 stable，且下载完成后不自动退出安装", async () => {
