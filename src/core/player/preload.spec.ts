@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
     setPlaybackContext: vi.fn(),
     enrichTrack: vi.fn(),
     updateLyricIndex: vi.fn(),
+    setLyric: vi.fn(),
   };
   return {
     track,
@@ -123,6 +124,57 @@ describe("切歌消费真实预载", () => {
     Object.assign(window, {
       api: { player: { load: mocks.load, stop: mocks.stop, transitionPrepared: mocks.transition } },
     });
+  });
+
+  it.each(["NETWORK_ERROR", "NETWORK_TIMEOUT"])("%s 保留真实错误并停止自动跳曲", async (error) => {
+    mocks.consume.mockReturnValue(null);
+    mocks.resolve.mockResolvedValue({
+      source: "https://music/next",
+      fromCache: false,
+      provider: "official",
+    });
+    mocks.load.mockResolvedValueOnce({ success: false, error });
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    const { playFrom } = await import("./index");
+    const { handleError } = await import("@/utils/errors");
+    await playFrom([mocks.track as Track]);
+    expect(mocks.resolve).toHaveBeenCalledOnce();
+    expect(handleError).toHaveBeenCalledExactlyOnceWith(error);
+    expect(timer.mock.calls.some((call) => call[1] === 1000)).toBe(false);
+    expect(mocks.status.state).toBe("idle");
+  });
+
+  it("解析接口网络失败不会当成无音源连续跳曲", async () => {
+    mocks.consume.mockReturnValue(null);
+    mocks.resolve.mockImplementationOnce((_track, options) => {
+      options.onError("NETWORK_ERROR");
+      return null;
+    });
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    const { playFrom } = await import("./index");
+    const { handleError } = await import("@/utils/errors");
+    await playFrom([mocks.track as Track]);
+    expect(handleError).toHaveBeenCalledExactlyOnceWith("NETWORK_ERROR");
+    expect(mocks.load).not.toHaveBeenCalled();
+    expect(timer.mock.calls.some((call) => call[1] === 1000)).toBe(false);
+  });
+
+  it("换源耗尽时保留原加载错误，不替换为缺少插件", async () => {
+    mocks.resolve.mockResolvedValueOnce({
+      source: "https://music/next",
+      fromCache: false,
+      provider: "official",
+    });
+    mocks.resolve.mockImplementationOnce((_track, options) => {
+      options.onError("NO_PLUGIN_AVAILABLE");
+      return null;
+    });
+    mocks.load.mockResolvedValueOnce({ success: false, error: "FILE_DECODE_ERROR" });
+    const { reloadCurrentTrack } = await import("./index");
+    const { handleError } = await import("@/utils/errors");
+    expect(await reloadCurrentTrack(false)).toBe(false);
+    expect(handleError).toHaveBeenCalledExactlyOnceWith("FILE_DECODE_ERROR");
+    expect(mocks.resolve).toHaveBeenCalledTimes(2);
   });
 
   it("主动停止在等待主进程响应前就作废预载", async () => {
