@@ -452,6 +452,7 @@
   "player": {
     "prev": "上一首",
     "next": "下一首",
+    "transitioning": "过渡",
     "heartMode": {
       "needLogin": "登录后才能使用心动模式",
       "noSeed": "暂无可用的心动种子歌曲",
@@ -742,6 +743,7 @@
       "update": "更新",
       "language": "语言",
       "playControl": "播放控制",
+      "playbackTransition": "播放过渡",
       "audioSource": "播放音源",
       "scrobble": "听歌打卡",
       "lyricContent": "歌词内容",
@@ -865,6 +867,19 @@
     "loudnessNormalization": {
       "label": "音量均衡",
       "description": "自动调节不同歌曲之间的音量差异"
+    },
+    "transitionMode": {
+      "label": "过渡方式",
+      "description": "调整歌曲在交替时的播放效果",
+      "none": "无过渡",
+      "crossfade": "交叉过渡"
+    },
+    "transitionPreference": {
+      "label": "交接倾向",
+      "description": "调整曲尾交接时机和过渡长度，积极档更早、更长",
+      "conservative": "保守",
+      "standard": "标准",
+      "eager": "积极"
     },
     "songLevel": {
       "label": "在线歌曲音质",
