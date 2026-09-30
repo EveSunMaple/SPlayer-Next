@@ -59,7 +59,10 @@ describe("下一曲真实预载", () => {
     vi.clearAllMocks();
     mocks.resolve.mockReset();
     mocks.status = reactive({ ...mocks.status, state: "playing", trackLoading: false });
+    mocks.settings = reactive(mocks.settings);
     mocks.settings.player.preloadNextTrack = true;
+    mocks.settings.player.transitionMode = "crossfade";
+    mocks.settings.player.transitionPreference = "standard";
     mocks.settings.system.cache.songCache = { enabled: true, cacheStreaming: true };
     mocks.candidate.track = { id: "next", source: "netease" };
     mocks.prepare.mockResolvedValue(true);
@@ -382,5 +385,46 @@ describe("下一曲真实预载", () => {
     expect(
       preloader.consumePreloadedTrack(mocks.candidate.track as Track)?.preparedId,
     ).toBeUndefined();
+  });
+
+  it.each(["关闭过渡", "修改倾向", "关闭预载"])("%s 时保留已提交交接的所有权", async (change) => {
+    mocks.resolve.mockResolvedValue({
+      source: "C:/cache/next.bin",
+      provider: "cache",
+      fromCache: true,
+    });
+    const preloader = await import("./nextTrackPreloader");
+    preloader.installNextTrackPreloadWatchers();
+    preloader.scheduleNextTrackPreload();
+    await flushPromises();
+    const prepared = preloader.beginPreparedTransition(mocks.candidate.track as Track)!;
+    expect(prepared.preparedId).toBeTruthy();
+    if (change === "关闭过渡") mocks.settings.player.transitionMode = "none";
+    if (change === "修改倾向") mocks.settings.player.transitionPreference = "eager";
+    if (change === "关闭预载") mocks.settings.player.preloadNextTrack = false;
+    await flushPromises();
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    expect(mocks.prepare).toHaveBeenCalledOnce();
+    expect(preloader.consumePreloadedTrack(mocks.candidate.track as Track)).toBeNull();
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    preloader.finishPreparedTransition(prepared.preparedId!);
+    await flushPromises();
+    expect(mocks.cancel).toHaveBeenCalledWith(prepared.preparedId);
+    expect(mocks.prepare).toHaveBeenCalledTimes(change === "关闭预载" ? 1 : 2);
+  });
+
+  it("迟到槽位通知不能取走当前备用槽位", async () => {
+    mocks.resolve.mockResolvedValue({
+      source: "C:/cache/next.bin",
+      provider: "cache",
+      fromCache: true,
+    });
+    const preloader = await import("./nextTrackPreloader");
+    preloader.scheduleNextTrackPreload();
+    await flushPromises();
+    expect(
+      preloader.beginPreparedTransition(mocks.candidate.track as Track, "old-slot"),
+    ).toBeNull();
+    expect(preloader.peekPreparedTrack(mocks.candidate.track as Track)?.preparedId).toBeTruthy();
   });
 });

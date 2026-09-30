@@ -26,7 +26,8 @@ import {
   disposeNextTrackPreload,
   invalidateNextTrackPreload,
   installNextTrackPreloadWatchers,
-  peekPreparedTrack,
+  beginPreparedTransition,
+  finishPreparedTransition,
   scheduleNextTrackPreload,
 } from "@/services/nextTrackPreloader";
 import { getNextTrackCandidate } from "./candidate";
@@ -543,12 +544,21 @@ export const pause = async (): Promise<void> => {
   }
 };
 
+/** 作废在途加载和交接，防止迟到响应覆盖用户的新操作。 */
+export const invalidatePlaybackOperation = (): number => {
+  loadToken++;
+  useStatusStore().transitioning = false;
+  return ++trackToken;
+};
+
 /** 停止播放并重置进度 */
 export const stop = async (): Promise<void> => {
+  const token = invalidatePlaybackOperation();
   invalidateNextTrackPreload();
   const status = useStatusStore();
   status.trackLoading = false;
   const result = await window.api.player.stop();
+  if (token !== trackToken) return;
   if (result.success) {
     status.state = "stopped";
     status.position = 0;
@@ -590,6 +600,7 @@ export const seek = async (posMs: number): Promise<void> => {
   // 歌曲加载中 seek 无意义：引擎此刻没有可 seek 的解码线程，
   // 且 seekTarget 残留会让加载完成后的 position 推送被持续丢弃
   if (status.trackLoading) return;
+  const token = invalidatePlaybackOperation();
   // 先冻结插值，再写入位置
   playback.setSeeking(true);
   status.position = posMs;
@@ -599,6 +610,7 @@ export const seek = async (posMs: number): Promise<void> => {
   seekTarget = posMs;
 
   const result = await window.api.player.seek(posMs);
+  if (token !== trackToken) return;
   if (result.success) {
     status.position = posMs;
     playback.setCurrentTime(posMs);
@@ -612,6 +624,7 @@ export const seek = async (posMs: number): Promise<void> => {
 export const markSeek = (posMs: number): void => {
   const status = useStatusStore();
   if (status.trackLoading) return;
+  invalidatePlaybackOperation();
   playback.setSeeking(true);
   status.position = posMs;
   playback.setCurrentTime(posMs);
@@ -793,7 +806,7 @@ export const saveTrackTags = async (edits: TagEditRequest[]): Promise<TagWriteOu
     resumeMs = Math.round(playback.getCurrentTime());
     wasPlaying = status.isPlaying;
     // Windows 下引擎持有文件句柄，必须先停止才能写入
-    await window.api.player.stop();
+    await stop();
   }
 
   const result = await window.api.library.writeTags(edits);
@@ -939,9 +952,8 @@ export const trySmartTransition = async (
     shuffleMode: status.shuffleMode,
   });
   if (!candidate) return;
-  const prepared = peekPreparedTrack(candidate.track);
+  const prepared = beginPreparedTransition(candidate.track, preparedId);
   if (!prepared?.preparedId || !prepared.source) return;
-  if (preparedId && preparedId !== prepared.preparedId) return;
   const shouldLog = lastLoggedTransitionId !== prepared.preparedId;
   if (shouldLog) lastLoggedTransitionId = prepared.preparedId;
   const oldIndex = status.playIndex;
@@ -977,8 +989,7 @@ export const trySmartTransition = async (
     if (
       status.playIndex !== oldIndex ||
       status.currentTrack?.id !== oldTrackId ||
-      queue.queue.value[candidate.index]?.id !== candidate.track.id ||
-      !consumePreloadedTrack(candidate.track)
+      queue.queue.value[candidate.index]?.id !== candidate.track.id
     ) {
       console.warn("[player:transition] 队列或预载槽位已变化，重新加载下一曲");
       await nextTrack();
@@ -995,6 +1006,7 @@ export const trySmartTransition = async (
     if (stopAfterTrack) await pause();
   } finally {
     transitionInFlight = false;
+    finishPreparedTransition(prepared.preparedId);
   }
 };
 
@@ -1027,6 +1039,7 @@ export const prevTrack = async (): Promise<void> => {
 
 /** 队列播放结束，通知主进程停止并更新状态 */
 const onQueueEnded = async (): Promise<void> => {
+  const token = invalidatePlaybackOperation();
   invalidateNextTrackPreload();
   const status = useStatusStore();
   status.trackLoading = false;
@@ -1034,6 +1047,7 @@ const onQueueEnded = async (): Promise<void> => {
   playback.reset();
   // 通知主进程停止音频引擎
   await window.api.player.stop();
+  if (token !== trackToken) return;
   status.state = "stopped";
   status.position = status.duration;
 };

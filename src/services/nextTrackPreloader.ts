@@ -29,6 +29,7 @@ let preloadAbort: AbortController | null = null;
 let cachedResult: NextTrackPreloadResult | null = null;
 let currentContextKey: string | null = null;
 let pendingCover: HTMLImageElement | null = null;
+let transitionPreparedId: string | null = null;
 let stopContextWatch: (() => void) | null = null;
 
 /**
@@ -153,9 +154,40 @@ export const peekPreparedTrack = (track: Track): NextTrackPreloadResult | null =
 };
 
 /**
+ * 将备用槽位所有权交给在途交接，设置变更从下一次预载开始生效。
+ * @param track - 本次交接的目标曲目
+ * @param expectedId - 后台通知对应的槽位标识
+ * @returns 已接管的预载结果，迟到通知或槽位失效时返回 null
+ */
+export const beginPreparedTransition = (
+  track: Track,
+  expectedId?: string,
+): NextTrackPreloadResult | null => {
+  if (transitionPreparedId) return null;
+  const prepared = peekPreparedTrack(track);
+  if (!prepared?.source || (expectedId && prepared.preparedId !== expectedId)) return null;
+  const result = consumePreloadedTrack(track);
+  if (!result?.preparedId) return null;
+  transitionPreparedId = result.preparedId;
+  return result;
+};
+
+/**
+ * 释放交接所有权，再按最新设置调度下一曲。
+ * @param id - 本次交接持有的槽位标识
+ */
+export const finishPreparedTransition = (id: string): void => {
+  if (transitionPreparedId !== id) return;
+  transitionPreparedId = null;
+  void window.api.player.cancelPrepared(id).catch(console.warn);
+  scheduleNextTrackPreload();
+};
+
+/**
  * 调度下一首预载任务
  */
 export const scheduleNextTrackPreload = (): void => {
+  if (transitionPreparedId) return;
   const settings = useSettingsStore();
   if (!settings.player.preloadNextTrack) {
     invalidateNextTrackPreload();

@@ -323,3 +323,28 @@ test("未打开设备时也能预载，立即取消及连续替换按调用顺�
   assert.equal(player.getPosition(), 0);
   assert.equal(player.getStatus().state, "stopped");
 });
+
+test("交接中从两倍速降到半速不会被固定墙钟超时停止", { timeout: 55000 }, async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "splayer-transition-slowdown-"));
+  const current = path.join(directory, "current.wav");
+  const next = path.join(directory, "next.wav");
+  writeWav(current, 48000, 18, 0.2);
+  writeWav(next, 48000, 24, 0.1);
+  const player = new AudioPlayer();
+  t.after(() => {
+    player.stop();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  player.setVolume(0);
+  player.setSpeed(2);
+  await player.load(current, true);
+  assert.equal(await player.prepareNext("slowdown", next), true);
+  const began = performance.now();
+  const pending = player.transitionToPrepared("slowdown", next, 8.5, "eager");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  player.setSpeed(0.5);
+  assert.ok(await pending);
+  assert.ok(performance.now() - began > 18500);
+  assert.equal(player.getStatus().state, "playing");
+  assert.equal(player.getDuration(), 24);
+});

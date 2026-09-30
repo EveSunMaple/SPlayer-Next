@@ -17,7 +17,7 @@ import * as nowPlaying from "@main/services/nowPlaying";
 import * as lastfm from "@main/services/lastfm";
 import * as neteaseScrobble from "@main/services/neteaseScrobble";
 import { fetchBytes } from "@main/utils/fetchBytes";
-import { getPlayer, resetPlayer, onPlayerCreated } from "@main/services/engine";
+import { getPlayer, resetPlayer, onPlayerCreated, onPlayerReset } from "@main/services/engine";
 import {
   cancelPendingReinit,
   setPauseOnDeviceSwitch,
@@ -254,8 +254,11 @@ const registerNativeEvents = (inst: InstanceType<AudioEngineModule["AudioPlayer"
   });
 };
 
-/** 每次 player:load 自增 */
+/** 播放操作代次，加载、停止、跳转和实例重置都会作废旧响应。 */
 let loadSeq = 0;
+onPlayerReset(() => {
+  loadSeq++;
+});
 
 /**
  * 在原生加载或交叉交接完成后统一更新媒体信息与播放统计
@@ -372,13 +375,14 @@ export const registerPlayerIpc = (): void => {
       preference: TransitionPreference,
       options: LoadOptions = {},
     ) => {
+      const seq = loadSeq;
+      const current = getPlayer();
       try {
         playerLog.info("开始寻找曲尾交接点", {
           to: options.meta?.title,
           preference,
           remainingMs: Math.round(remainingMs),
         });
-        const current = getPlayer();
         const endMs = getTransitionEndMs(
           activeCueRange
             ? activeCueRange.startMs + activeCueRange.durationMs
@@ -396,12 +400,13 @@ export const registerPlayerIpc = (): void => {
           options.meta?.cueEndMs == null ? undefined : options.meta.cueEndMs / 1000,
           endMs / 1000,
         );
+        if (seq !== loadSeq || current !== getPlayer()) return { success: false };
         if (!meta) {
           playerLog.info("交叉过渡未启动，等待正常切歌");
           return { success: false };
         }
         activeCueRange = cueRangeFromTrack(options.meta);
-        const seq = ++loadSeq;
+        const completedSeq = ++loadSeq;
         cancelPreparedTrack(id);
         const inst = getPlayer();
         const state = inst.getStatus().state as PlayerState;
@@ -409,7 +414,7 @@ export const registerPlayerIpc = (): void => {
           source,
           { ...options, autoPlay: state === "playing" },
           meta,
-          seq,
+          completedSeq,
         );
         const playback = {
           position: toDisplayPositionMs(toMs(inst.getPosition())),
@@ -431,6 +436,7 @@ export const registerPlayerIpc = (): void => {
         };
       } catch (error) {
         cancelPreparedTrack(id);
+        if (seq !== loadSeq || current !== getPlayer()) return { success: false };
         return fail(ErrorCode.UNKNOWN, error);
       }
     },
@@ -522,11 +528,14 @@ export const registerPlayerIpc = (): void => {
         .finally(() => {
           if (options.preparedId) cancelPreparedTrack(options.preparedId);
         });
+      if (seq !== loadSeq || inst !== getPlayer()) return fail(ErrorCode.LOAD_SUPERSEDED);
       if (cueRange) {
         if (meta.preparedPosition !== cueRange.startMs / 1000)
           await inst.seek(cueRange.startMs / 1000);
+        if (seq !== loadSeq || inst !== getPlayer()) return fail(ErrorCode.LOAD_SUPERSEDED);
         if (autoPlay) await inst.play();
       }
+      if (seq !== loadSeq || inst !== getPlayer()) return fail(ErrorCode.LOAD_SUPERSEDED);
       playerLog.debug(`加载成功: ${authoritative?.title ?? meta.title ?? source}`);
       return completeTrackLoad(source, options, meta, seq);
     } catch (error) {
@@ -569,6 +578,7 @@ export const registerPlayerIpc = (): void => {
 
   // 停止播放并释放资源
   ipcMain.handle("player:stop", () => {
+    loadSeq++;
     try {
       cancelPreparedTrack();
       cancelPendingReinit();
@@ -583,10 +593,12 @@ export const registerPlayerIpc = (): void => {
 
   // 跳转到指定播放位置
   ipcMain.handle("player:seek", async (_event, positionMs: number) => {
+    const seq = ++loadSeq;
     try {
       const enginePositionMs = toEnginePositionMs(positionMs);
       const positionSecs = enginePositionMs / 1000;
       await getPlayer().seek(positionSecs);
+      if (seq !== loadSeq) return { success: false };
       mediaService.setTimeline({
         currentMs: positionMs,
         totalMs: toDisplayDurationMs(toMs(getPlayer().getDuration())),
@@ -873,13 +885,18 @@ export const registerPlayerIpc = (): void => {
           inst.pause();
           break;
         case "Stop":
+          loadSeq++;
+          cancelPreparedTrack();
+          setCurrentTransitionRange();
           inst.stop();
           break;
         case "Seek":
           if (event.positionMs != null) {
+            const seq = ++loadSeq;
             const targetMs = event.positionMs;
             sendToMain("player:event", { type: "seek", data: { position: targetMs } });
-            void inst.seek(targetMs / 1000).then(() => {
+            void inst.seek(toEnginePositionMs(targetMs) / 1000).then(() => {
+              if (seq !== loadSeq || inst !== getPlayer()) return;
               mediaService.setTimeline({
                 currentMs: targetMs,
                 totalMs: toMs(inst.getDuration()),

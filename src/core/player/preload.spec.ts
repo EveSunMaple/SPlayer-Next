@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
     consume: vi.fn(),
     peek: vi.fn(),
     transition: vi.fn(),
+    finishTransition: vi.fn(),
     onTrackEnded: vi.fn(),
     resolve: vi.fn(),
     load: vi.fn(),
@@ -86,7 +87,13 @@ vi.mock("@/services/audioSource", () => ({ resolveTrackSource: mocks.resolve }))
 vi.mock("@/services/nextTrackPreloader", () => ({
   invalidateNextTrackPreload: mocks.invalidate,
   consumePreloadedTrack: mocks.consume,
-  peekPreparedTrack: mocks.peek,
+  beginPreparedTransition: (_track: Track, expectedId?: string) => {
+    const result = mocks.peek();
+    if (!result || (expectedId && result.preparedId !== expectedId)) return null;
+    mocks.consume();
+    return result;
+  },
+  finishPreparedTransition: mocks.finishTransition,
   disposeNextTrackPreload: vi.fn(),
   installNextTrackPreloadWatchers: vi.fn(),
   scheduleNextTrackPreload: vi.fn(),
@@ -371,5 +378,109 @@ describe("交叉过渡的队列交接", () => {
     const { trySmartTransition } = await import("./index");
     await trySmartTransition(5000);
     expect(mocks.transition).not.toHaveBeenCalled();
+  });
+
+  it("停止后迟到的交接成功响应不能推进队列或恢复播放", async () => {
+    let finish!: (value: unknown) => void;
+    mocks.transition.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const player = await import("./index");
+    const pending = player.trySmartTransition(5000);
+    await player.stop();
+    mocks.consume.mockReturnValue(null);
+    finish({ success: true, data: { detail: {}, mediaInfo: { duration: 1000 } } });
+    await pending;
+    expect(mocks.status.playIndex).toBe(0);
+    expect(mocks.status.state).toBe("stopped");
+    expect(mocks.load).not.toHaveBeenCalled();
+    expect(mocks.onTrackEnded).not.toHaveBeenCalled();
+    expect(mocks.finishTransition).toHaveBeenCalledWith("next-slot");
+  });
+
+  it("seek 后迟到的交接成功响应不能切换曲目", async () => {
+    let finish!: (value: unknown) => void;
+    mocks.transition.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    Object.assign(window.api.player, { seek: vi.fn().mockResolvedValue({ success: true }) });
+    const player = await import("./index");
+    const pending = player.trySmartTransition(5000);
+    await player.seek(1000);
+    finish({ success: true, data: { detail: {}, mediaInfo: { duration: 1000 } } });
+    await pending;
+    expect(mocks.status.playIndex).toBe(0);
+    expect(mocks.status.position).toBe(1000);
+    expect(mocks.media.track.id).toBe("old");
+    expect(mocks.onTrackEnded).not.toHaveBeenCalled();
+  });
+
+  it("停止后迟到的交接错误不能触发下一曲兜底", async () => {
+    let finish!: (value: unknown) => void;
+    mocks.transition.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const player = await import("./index");
+    const pending = player.trySmartTransition(5000);
+    await player.stop();
+    finish({ success: false, error: "UNKNOWN" });
+    await pending;
+    expect(mocks.status.playIndex).toBe(0);
+    expect(mocks.load).not.toHaveBeenCalled();
+  });
+
+  it("交接持有已接管的音源，设置作废预载后也不重复加载", async () => {
+    let finish!: (value: unknown) => void;
+    mocks.transition.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const player = await import("./index");
+    const pending = player.trySmartTransition(5000);
+    mocks.consume.mockReturnValue(null);
+    finish({ success: true, data: { detail: {}, mediaInfo: { duration: 1000 } } });
+    await pending;
+    expect(mocks.status.playIndex).toBe(1);
+    expect(mocks.load).not.toHaveBeenCalled();
+    expect(mocks.stop).not.toHaveBeenCalled();
+    expect(mocks.finishTransition).toHaveBeenCalledWith("next-slot");
+  });
+
+  it("停止 IPC 尚未返回时也拒绝交接结果", async () => {
+    let finishTransition!: (value: unknown) => void;
+    let finishStop!: (value: unknown) => void;
+    mocks.transition.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishTransition = resolve;
+        }),
+    );
+    mocks.stop.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishStop = resolve;
+        }),
+    );
+    const player = await import("./index");
+    const transition = player.trySmartTransition(5000);
+    const stopping = player.stop();
+    finishTransition({ success: true, data: { detail: {}, mediaInfo: { duration: 1000 } } });
+    await transition;
+    expect(mocks.status.playIndex).toBe(0);
+    expect(mocks.load).not.toHaveBeenCalled();
+    finishStop({ success: true });
+    await stopping;
+    expect(mocks.status.state).toBe("stopped");
   });
 });
