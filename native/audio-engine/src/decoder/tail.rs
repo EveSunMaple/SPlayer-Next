@@ -20,7 +20,8 @@ pub(crate) fn analyze_tail(
     }
     let began = Instant::now();
     let scan_start = start.max(end - 30.0);
-    let mut reader = AudioReader::new(std::fs::File::open(source)?)?;
+    let mut reader =
+        AudioReader::new(super::input::AudioInput::new(std::fs::File::open(source)?)?)?;
     let rate = f64::from(reader.source_info().sample_rate);
     let channels = reader.source_info().channels as usize;
     if rate <= 0.0 || channels == 0 || cancelled() {

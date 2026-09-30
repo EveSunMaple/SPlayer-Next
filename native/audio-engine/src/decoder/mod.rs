@@ -1,3 +1,4 @@
+pub(crate) mod input;
 mod processing;
 mod reader;
 use processing::run_dsp_safely;
