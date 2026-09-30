@@ -743,6 +743,7 @@ const api = {
     setActive: (id: string | null) => ipcRenderer.invoke("aiModel:setActive", id),
   },
   update: {
+    getState: () => ipcRenderer.invoke("update:getState"),
     // 检查更新
     check: (manual: boolean) => ipcRenderer.invoke("update:check", manual),
     // 下载更新（Win/Linux）

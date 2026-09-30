@@ -7,9 +7,10 @@
     "installNow": "立即重启安装",
     "goDownload": "前往下载页",
     "goStore": "前往商店更新",
-    "upToDate": "已是最新版本",
+    "upToDate": "当前通道暂无更高版本",
     "readyToast": "更新已就绪，可重启安装",
-    "failed": "更新失败，请稍后重试"
+    "failed": "更新失败，请稍后重试",
+    "installing": "正在启动安装程序"
   },
   "onboarding": {
     "next": "下一步",
@@ -1739,15 +1740,11 @@
     },
     "updateChannel": {
       "label": "更新通道",
-      "description": "选择正式版、Beta 预览版、Alpha 内测版或 Nightly 持续构建更新",
+      "description": "选择接收更新的通道，切换通道不会自动降级",
       "stable": "正式版",
       "beta": "Beta 预览版",
       "alpha": "Alpha 内测版",
       "nightly": "Nightly 持续构建"
-    },
-    "checkUpdate": {
-      "label": "检查更新",
-      "description": "立即检查是否有新版本"
     },
     "showPerformanceMonitor": {
       "label": "性能监视器",

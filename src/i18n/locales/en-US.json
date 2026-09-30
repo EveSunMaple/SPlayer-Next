@@ -7,9 +7,10 @@
     "installNow": "Restart & Install",
     "goDownload": "Go to Download",
     "goStore": "Update in Store",
-    "upToDate": "You're on the latest version",
+    "upToDate": "No newer version is available on this channel",
     "readyToast": "Update ready — restart to install",
-    "failed": "Update failed, please try again later"
+    "failed": "Update failed, please try again later",
+    "installing": "Starting installer"
   },
   "onboarding": {
     "next": "Next",
@@ -1751,15 +1752,11 @@
     },
     "updateChannel": {
       "label": "Update Channel",
-      "description": "Choose between Stable, Beta preview, Alpha internal, or Nightly updates",
+      "description": "Choose which releases to receive. Switching channels never automatically downgrades the app.",
       "stable": "Stable",
       "beta": "Beta Preview",
       "alpha": "Alpha Experimental",
       "nightly": "Nightly Build"
-    },
-    "checkUpdate": {
-      "label": "Check for Updates",
-      "description": "Check for a new version now"
     },
     "showPerformanceMonitor": {
       "label": "Performance Monitor",
