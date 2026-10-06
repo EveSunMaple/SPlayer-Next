@@ -17,7 +17,7 @@ const { t } = useI18n();
 const { show: showSettings } = useSettingsDialog();
 const theme = useThemeStore();
 const update = useUpdateStore();
-const { isBorderless } = useWindowControls();
+const { showCustomControls } = useWindowControls();
 
 /** 界面缩放弹窗开关 */
 const uiZoomOpen = ref(false);
@@ -106,7 +106,7 @@ const onMenuSelect = (key: string): void => {
           </SButton>
         </template>
       </SDropdownMenu>
-      <SDivider v-if="isBorderless" vertical />
+      <SDivider v-if="showCustomControls" vertical />
       <WindowControls />
     </div>
     <UiZoomDialog v-model:open="uiZoomOpen" />

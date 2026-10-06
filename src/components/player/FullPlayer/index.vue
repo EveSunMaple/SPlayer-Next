@@ -129,7 +129,7 @@ const lyricFontSize = computed(() =>
 const { immersive, onPlayerMouseEnter, onPlayerMouseLeave, onMainMove, onBarEnter, onBarLeave } =
   useImmersiveMode(isPlayerExpanded);
 
-const { isFullscreen, toggleFullscreen } = useWindowControls();
+const { isFullscreen, usesNativeTrafficLights, toggleFullscreen } = useWindowControls();
 
 const canDownload = computed(
   () =>
@@ -230,7 +230,10 @@ const showComments = (): void => {
           @mouseenter="onBarEnter"
           @mouseleave="onBarLeave"
         >
-          <div class="app-no-drag flex items-center gap-2">
+          <div
+            class="app-no-drag flex items-center gap-2"
+            :class="{ 'app-traffic-lights-offset': usesNativeTrafficLights && !isFullscreen }"
+          >
             <SButton
               type="cover"
               variant="ghost"

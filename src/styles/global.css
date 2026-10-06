@@ -29,6 +29,10 @@ img {
 .app-no-drag {
   -webkit-app-region: no-drag;
 }
+/* macOS 原生红绿灯占位：按钮组约占 12~66px，左侧内容让出到 80px 之后 */
+.app-traffic-lights-offset {
+  margin-left: 68px;
+}
 
 /* 应用主背景 */
 :root {
