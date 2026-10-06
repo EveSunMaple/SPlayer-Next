@@ -35,7 +35,7 @@ export const createMainWindow = (): BrowserWindow => {
   // macOS 无边框模式保留系统红绿灯并垂直居中于顶栏，Windows / Linux 使用自绘控制按钮
   const frameOptions: BrowserWindowConstructorOptions =
     isMac && borderlessWindow
-      ? { titleBarStyle: "hidden", trafficLightPosition: { x: 12, y: 24 } }
+      ? { titleBarStyle: "hidden", trafficLightPosition: { x: 24, y: 24 } }
       : { frame: !borderlessWindow };
 
   mainWindow = createWindow({
