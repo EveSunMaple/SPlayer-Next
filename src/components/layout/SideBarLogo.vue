@@ -18,8 +18,8 @@ const goHome = (): void => {
 
 <template>
   <div
-    class="flex items-center h-16 shrink-0 px-4"
-    :class="nativeTitle ? 'app-drag-region' : 'justify-center'"
+    class="flex items-center h-16 shrink-0"
+    :class="nativeTitle ? 'app-drag-region pl-3 pr-4' : 'justify-center px-4'"
   >
     <div
       v-if="!nativeTitle || !collapsed"
